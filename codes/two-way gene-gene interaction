@@ -1,0 +1,62 @@
+##########################################################################################
+### This Program can calculate p_value of example of 2 way with test statistic T_IG ###
+### Fan RZ, Zhong M, Wang SF, Zhang YW, Andrew A, Karagas M, Chen H, Amos CI, Xiong M, ###
+### and Moore J (2011) Entropy-based information gain approaches to detect and to ###
+### characterize gene-gene and gene-environment interactions/correlations of complex ###
+### diseases. Genetic Epidemiology 35:706-721. ###
+### Maintainer: Bingsong Zhang ###
+##########################################################################################
+p_value_func_T_IG <- function(X1, Y1)
+     {
+     M <- sum(X1)
+     P1 <- X1/M
+     P <- P1[c(-9)]
+     N <- sum(Y1)
+     Q1 <- Y1/N
+     Q <- Q1[c(-9)]
+     Sigma <- diag(P) - P %*% t(P)
+     PGAB1 <- t( matrix(P1, nrow =3, ncol =3) )
+     f <- matrix (0, nrow = 3, ncol =3)
+     df <- matrix(0, nrow = 1, ncol = 8)
+     tmp <- 0
+     if (PGAB1[3, 3] > 0)
+     tmp <- tmp - log2( PGAB1[3, 3]/( sum(PGAB1[3,]) * sum(PGAB1[,3]) ) )
+     for (i in 1:3)
+          for (j in 1:3)
+               if (PGAB1[i, j] > 0)
+                    {
+                    f[i, j] <- PGAB1[i, j] * log2( PGAB1[i, j]/( sum(PGAB1[i,]) * sum(PGAB1[,j]) ) )
+                    if ( 3*(i-1) + j < 9 )
+                         {
+                         tmp1 <- log2( PGAB1[i, j]/( sum(PGAB1[i,]) * sum(PGAB1[,j]) ) )
+                         df[3*(i-1)+j] <- tmp + tmp1
+                         }
+                    }
+     SigmaD <- diag(Q) - Q %*% t(Q)
+     QGAB1 <- t( matrix(Q1, nrow =3, ncol =3) )
+     g <- matrix(0, nrow=3, ncol=3)
+     dg <- matrix(0, nrow=1, ncol=8)
+     tmp2 <- 0
+     if ( QGAB1[3, 3] > 0)
+          tmp2 <- tmp2 - log2( QGAB1[3, 3]/( sum(QGAB1[3,]) * sum(QGAB1[,3]) ) )
+     for (i in 1:3)
+          for (j in 1:3)
+                    if (QGAB1[i, j] > 0)
+                         {
+                         g[i, j] <- QGAB1[i, j] * log2( QGAB1[i, j]/( sum(QGAB1[i,]) * sum(QGAB1[,j]) ) )
+                         if ( 3*(i-1) + j < 9 )
+                              {
+                              tmp3 <- log2( QGAB1[i, j]/( sum(QGAB1[i,]) * sum(QGAB1[,j]) ) )
+                              dg[3*(i-1)+j] <- tmp2 + tmp3
+                              }
+                         }
+     Lambda <- df %*% Sigma %*% t(df)/M + dg %*% SigmaD %*% t(dg)/N
+     TIG <-(sum(g)-sum(f))^2/Lambda
+     p_value<- 1-pchisq(TIG,1)
+     TIG_pvalue<-c(TIG,p_value)
+     }
+#(16) xpd.751 xpd.312
+X1<-c(156,42,15,60,193,19,5,33,36)
+Y1<-c(58,63,20,52,82,24,25,17,14)
+pvalue = p_value_func_T_IG(X1, Y1)
+pvalue
