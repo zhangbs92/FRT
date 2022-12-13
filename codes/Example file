@@ -1,0 +1,22 @@
+setwd("C:/NICHD/Research/software/Fan/Joint_association_analysis/")
+source("C:/NICHD/Research/software/Fan/Joint_association_analysis/FT_Add.R")
+source("C:/NICHD/Research/software/Fan/Joint_association_analysis/FT_Dom.R")
+source("C:/NICHD/Research/software/Fan/Joint_association_analysis/FT_Mult.R")
+source("C:/NICHD/Research/software/Fan/Joint_association_analysis/FT_Rec.R")
+source("C:/NICHD/Research/software/Fan/Joint_association_analysis/FT_Unr.R")
+triad <- read.csv(file="C:/NICHD/Research/software/Fan/Joint_association_analysis/triad.csv", head=TRUE,sep=",", na.strings = "", row.names = 1)
+dyad <- read.csv(file="C:/NICHD/Research/software/Fan/Joint_association_analysis/dyad.csv", head=TRUE,sep=",", na.strings = "", row.names = 1)
+monad <- read.csv(file="C:/NICHD/Research/software/Fan/Joint_association_analysis/monad.csv", head=TRUE,sep=",", na.strings = "", row.names = 1)
+triad
+dyad
+monad
+#1. Additive: LRT, p-value
+(ft.ADD = FT.ADD(triad, dyad, monad))
+#2. Dominant: LRT, p-value
+(ft.DOM= FT.DOM(triad, dyad, monad))
+#3. Multiplicative: LRT, p-value
+(ft.MULT = FT.MULT(triad, dyad, monad))
+#4. Recessive: LRT, p-value
+(ft.REC = FT.REC(triad, dyad, monad))
+#5. Unrestricted: LRT, p-value
+(ft.UNR = FT.UNR(triad, dyad, monad))
