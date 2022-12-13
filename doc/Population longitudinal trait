@@ -1,0 +1,23 @@
+1. Overview
+
+This document describes a R package to implement the models of association mapping to analyze population longitudinal data. The document contains three files: 
+
+a. Age_Sex_Geno_Trait_data.csv, 
+b. simulation log-mu web example.R, and 
+c. simulation log-mu codes for Age_Sex_Geno_Trait_data.R. 
+
+The first one is a dataset used in simulation_log-mu_web_example.R, and the third one generates datasets and implements codes to run the models of Fan et al. (2012). Notice that you may generate a dataset Age_Sex_Geno_Trait_data.csv by running simulation log-mu codes for Age_Sex_Geno_Trait_data.R.
+Section 2 briefly describes the installation of the program of Longitudinal_qtl_popu_web.zip. Section 3 explains how to run the program using one example.
+The theoretical basis for this program is given in our research paper in Reference. Please refer to the reference if you use the program in any published work. In case of suggestions and questions and/or problems, you can contact us via e-mail zhangbingsong@gdmu.edu.cn
+
+2. Download and Installation
+
+The package is written in R. Download the package Longitudinal_qtl_popu_web.zip. Put the three files in one directory.
+
+3. How to run the program?
+
+On an R Console in a PC, open the .file simulation log-mu codes for Age_Sex_Geno_Trait_data.R or simulation_log-mu_web_example.R. Change the paths leading to the directory of the package. Then, you may run the program.
+
+4. Reference
+
+[1] Fan RZ, Zhang YW, Albert PS, Liu AY, Wang YJ, and Xiong MM (2012) Longitudinal association analysis of quantitative traits. Genetic Epidemiology 36:856-869.
