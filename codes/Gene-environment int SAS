@@ -1,0 +1,407 @@
+/* Maintainer: Bingsong Zhang */
+/*
+d:\paper\ruzong3\soft\hotel_fam.sas
+Version 0.2, 14.03.05
+Aenderungen:
+14.3.05: A bug in the macro has been corrected. The effect of this bug was that
+all children were treated as affected, irrespective of the value given in
+the variable aff_stat
+*/
+%macro va_lst(anz,namen);
+          %global va_lst;
+          %let va_lst="";
+          %do i=1 %to &anz;
+                %let help=%scan(&namen,&i,' ');
+                %if &i.>1 %then
+                     %let va_lst=%unquote(&va_lst &help._1 &help._2);
+                %else
+                     %let va_lst=%unquote(&help._1 &help._2);
+          %end;
+          %put &va_lst.;
+%mend;
+%macro hotel_fam(infile,ma_number,ma_names,outfile,simumf);
+%let max_allele=100;
+%let max_fam=1000;
+%va_lst(&ma_number.,&ma_names.);
+data dfile; set &infile.;
+array ma[&ma_number.,2] &va_lst.;
+complete=1;
+i=0;
+do while ((i<&ma_number.) and (complete=1));
+          i=i+1;
+          if (ma[i,1]*ma[i,2]=0) then complete=0;
+end;
+if (complete=1) then output;
+keep fam ind father mother sex aff &va_lst.;
+run;
+proc sort; by fam father sex;
+run;
+proc iml;
+          eps=0.000001;
+          use dfile var { fam ind father mother sex aff &va_lst.};
+          read all into daten;
+          anz_obs=NROW(daten);
+          anz_marker=(NCOL(daten)-6)/2;
+          rdaten=J(anz_obs,6+2*anz_marker);
+          recode_table=J(anz_marker,&max_allele.,0);
+          anz_allele=J(anz_marker,1,0);
+          START recode(daten,rdaten,recode_table,anz_allele);
+                fehler=0;
+                anz_obs=NROW(daten);
+                rdaten[1:anz_obs,1:6]=daten[1:anz_obs,1:6];
+                /* Rekodierung der Markerdaten */
+                do j=1 to &ma_number.;
+                     do i=1 to anz_obs;
+                          do k=1 to 2;
+                               allel=daten[i,6+2*(j-1)+k];
+                               if (allel) then do;
+                                    found=0; t=0;
+                                    do while ((t<anz_allele[j])*(found=0));
+                                         t=t+1;
+                                         if (allel=recode_table[j,t]) then found=1;
+                                    end;
+                                    if (found=0) then do;
+                                         anz_allele[j]=anz_allele[j]+1;
+                                         t=anz_allele[j];
+                                         if (t>&max_allele.) then fehler=1;
+                                         recode_table[j,t]=allel;
+                                     end;
+                                    rdaten[i,6+2*(j-1)+k]=t;
+                                  end; /* if (allel) */
+                                    else do; rdaten[i,6+2*(j-1)+k]=0; fehler=2; end;
+                          end;
+                     end;
+                end;
+                return (fehler);
+FINISH;
+START calc_laenge(anz_allele);
+          hc_laenge=0; gc_laenge=0;
+          do i=1 to &ma_number.;
+                anz=anz_allele[i];
+                hc_laenge=hc_laenge+anz-1;
+                gc_laenge=gc_laenge+(anz*(anz+1)/2)-1;
+          end;
+          erg=hc_laenge||gc_laenge;
+          return (erg);
+FINISH;
+START hc(indiv,laenge,anz_allele);
+          erg=J(laenge,1,0);
+          start=0;
+          do i=1 to &ma_number.;
+                do k=1 to 2;
+                     allel=indiv[6+2*(i-1)+k];
+                     if (allel<anz_allele[i]) then
+                          erg[start+allel]=erg[start+allel]+1;
+                end;
+                start=start+anz_allele[i]-1;
+          end;
+          return (erg);
+FINISH;
+START gc(indiv,laenge,anz_allele);
+          erg=J(laenge,1,0);
+          start=0;
+          do i=1 to &ma_number.;
+                allel1=indiv[6+2*(i-1)+1];
+                allel2=indiv[6+2*(i-1)+2];
+                if (allel1>allel2) then do;
+                     rette=allel1; allel1=allel2; allel2=rette;
+                end;
+                anz=anz_allele[i];
+                max_ind=(((anz+1)*anz)/2)-1;
+                index=((anz+1)*(allel1-1))-(allel1*(allel1-1)/2)+(allel2+1-allel1);
+                if (index<=max_ind) then erg[start+index]=erg[start+index]+1;
+                     start=start+max_ind;
+          end;
+          return (erg);
+FINISH;
+START create_fam_ptr(daten,fam_ptr);
+          anz_fam=0;
+          anz_obs=NROW(daten);
+          alt_fam=0;
+          do i=1 to anz_obs;
+                if (daten[i,1]-alt_fam) then do;
+                     anz_fam=anz_fam+1;
+                     fam_ptr[anz_fam]=i;
+                     alt_fam=daten[i,1];
+                  end;
+          end;
+          return (anz_fam);
+FINISH;
+fam_ptr=J(&max_fam.,1,0);
+anz_fam=create_fam_ptr(daten,fam_ptr);
+error=recode(daten,rdaten,recode_table,anz_allele);
+if (error) then print error;
+laenge=calc_laenge(anz_allele);
+perm=0;
+if (&simumf.>0) then do;
+          perm=1;
+          alle_hc=J(anz_fam,laenge[1],0);
+          alle_gc=J(2*anz_fam,laenge[2],0);
+        end;
+anz_trios=0; anz_mc=0; anz_fc=0;
+hc_trios_mean=J(laenge[1],1,0);
+hc_mc_mean=J(laenge[1],1,0);
+hc_fc_mean=J(laenge[1],1,0);
+gc_trios_mean=J(laenge[2],1,0);
+gc_mc_mean=J(laenge[2],1,0);
+gc_fc_mean=J(laenge[2],1,0);
+hc_trios_cov=J(laenge[1],laenge[1],0);
+hc_mc_cov=J(laenge[1],laenge[1],0);
+hc_fc_cov=J(laenge[1],laenge[1],0);
+gc_trios_cov=J(laenge[2],laenge[2],0);
+gc_mc_cov=J(laenge[2],laenge[2],0);
+gc_fc_cov=J(laenge[2],laenge[2],0);
+fatal_error=0;
+do fam=1 to anz_fam;
+          start_fam=fam_ptr[fam];
+          if (fam=anz_fam) then end_fam=anz_obs;
+                              else end_fam=fam_ptr[fam+1]-1;
+          f_flag=0; m_flag=0; c_flag=0;
+          anz_ch=0;
+          c_hcv=J(laenge[1],1,0);
+          c_gcv=J(laenge[2],1,0);
+          do ind=start_fam to end_fam;
+                indiv=rdaten[ind:ind,];
+                hcv=hc(indiv,laenge[1],anz_allele);
+                gcv=gc(indiv,laenge[2],anz_allele);
+                if (indiv[3]) then do;
+                     if (indiv[6]=2) then do;
+                                                               c_flag=1;
+                                                               c_hcv=c_hcv+hcv;
+                                                               c_gcv=c_gcv+gcv;
+                                                               anz_ch=anz_ch+1;
+                                                            end;
+                        end;
+                  else if (indiv[5]=2) then do; m_flag=1; m_hcv=hcv; m_gcv=gcv; end;
+                  else do; f_flag=1; f_hcv=hcv; f_gcv=gcv; end;
+          end;
+          if (c_flag) then do;
+                  c_hcv=c_hcv/anz_ch;
+                  c_gcv=c_gcv/anz_ch;
+                  if (f_flag*m_flag) then do;
+                        anz_trios=anz_trios+1;
+                        hcv=c_hcv-((f_hcv+m_hcv)/2);
+                        gcv=c_gcv-((f_gcv+m_gcv)/2);
+                        hc_trios_mean=hc_trios_mean+hcv;
+                        gc_trios_mean=gc_trios_mean+gcv;
+                        hc_trios_cov=hc_trios_cov+hcv*hcv`;
+                        gc_trios_cov=gc_trios_cov+gcv*gcv`;
+                        if (perm=1) then do;
+                              alle_hc[anz_trios,]=hcv`;
+                              alle_gc[2*anz_trios-1,]=gcv`;
+                              if (rdaten[start_fam,3]+rdaten[start_fam,5]-1)
+                                    then fatal_error=1;
+                              if (rdaten[start_fam+1,3]+rdaten[start_fam+1,5]-2)
+                                    then fatal_error=1;
+                              komp_anz_ch=0;
+                              komp_gcv=J(laenge[2],1,0);
+                              do ind=start_fam+2 to end_fam;
+                                    indiv=rdaten[ind:ind,];
+                                    do mark=1 to anz_marker;
+                                          par=J(4,1,0);
+                                          par[1]=rdaten[start_fam,6+2*mark-1];
+                                          par[2]=rdaten[start_fam,6+2*mark];
+                                          par[3]=rdaten[start_fam+1,6+2*mark-1];
+                                          par[4]=rdaten[start_fam+1,6+2*mark];
+                                          nt=J(4,1,1);
+                                          c_allel=indiv[6+2*mark-1];
+                                          found=0; j=0;
+                                          do while (found=0);
+                                                j=j+1;
+                                                if ((c_allel=par[j,1])+nt[j]=2) then do;
+                                                      found=1; nt[j,1]=0;
+                                                    end;
+                                          end;
+                                          c_allel=indiv[6+2*mark];
+                                          found=0; j=0;
+                                          do while (found=0);
+                                                j=j+1;
+                                                if ((c_allel=par[j,1])+nt[j]=2) then do;
+                                                      found=1; nt[j,1]=0;
+                                                    end;
+                                          end;
+                                          stelle=0;
+                                          do j=1 to 4;
+                                                if (nt[j,1]=1) then do;
+                                                      stelle=stelle+1;
+                                                      indiv[6+2*(mark-1)+stelle]=par[j];
+                                                    end;
+                                          end;
+                                          if (stelle-2) then fatal_error=1;
+                                    end;
+                                    gcv=gc(indiv,laenge[2],anz_allele);
+                                    komp_anz_ch=komp_anz_ch+1;
+                                    komp_gcv=komp_gcv+gcv;
+                              end;
+                              if (anz_ch-komp_anz_ch) then fatal_error=1;
+                              komp_gcv=komp_gcv/komp_anz_ch;
+                              gcv=komp_gcv-((f_gcv+m_gcv)/2);
+                              alle_gc[2*anz_trios,]=gcv`;
+                        end;
+                     end;
+                  if (f_flag) then do;
+                     anz_fc=anz_fc+1;
+                     hcv=c_hcv-f_hcv;
+                     gcv=c_gcv-f_gcv;
+                     hc_fc_mean=hc_fc_mean+hcv;
+                     gc_fc_mean=gc_fc_mean+gcv;
+                     hc_fc_cov=hc_fc_cov+hcv*hcv`;
+                     gc_fc_cov=gc_fc_cov+gcv*gcv`;
+                   end;
+                  if (m_flag) then do;
+                     anz_mc=anz_mc+1;
+                     hcv=c_hcv-m_hcv;
+                     gcv=c_gcv-m_gcv;
+                     hc_mc_mean=hc_mc_mean+hcv;
+                     gc_mc_mean=gc_mc_mean+gcv;
+                     hc_mc_cov=hc_mc_cov+hcv*hcv`;
+                     gc_mc_cov=gc_mc_cov+gcv*gcv`;
+                   end;
+               end; /* if (c_flag) */
+            end; /* do fam=1 */
+            hc_trios_mean=hc_trios_mean/anz_trios;
+            gc_trios_mean=gc_trios_mean/anz_trios;
+            hc_fc_mean=hc_fc_mean/anz_fc;
+            gc_fc_mean=gc_fc_mean/anz_fc;
+            hc_mc_mean=hc_mc_mean/anz_mc;
+            gc_mc_mean=gc_mc_mean/anz_mc;
+            hc_trios_cov=hc_trios_cov-anz_trios*hc_trios_mean*hc_trios_mean`;
+            gc_trios_cov=gc_trios_cov-anz_trios*gc_trios_mean*gc_trios_mean`;
+            hc_fc_cov=hc_fc_cov-anz_fc*hc_fc_mean*hc_fc_mean`;
+            gc_fc_cov=gc_fc_cov-anz_fc*gc_fc_mean*gc_fc_mean`;
+            hc_mc_cov=hc_mc_cov-anz_mc*hc_mc_mean*hc_mc_mean`;
+            gc_mc_cov=gc_mc_cov-anz_mc*gc_mc_mean*gc_mc_mean`;
+            T_sq_hc_trios=0; T_sq_gc_trios=0;
+            T_sq_hc_fc=0; T_sq_gc_fc=0;
+            T_sq_hc_mc=0; T_sq_gc_mc=0;
+            if (anz_trios>1) then do;
+                   T_sq_hc_trios=anz_trios*((hc_trios_mean)`)
+                          *GINV(hc_trios_cov/(anz_trios-1))*hc_trios_mean;
+                   T_sq_gc_trios=anz_trios*((gc_trios_mean)`)
+                          *GINV(gc_trios_cov/(anz_trios-1))*gc_trios_mean;
+                   end;
+            if (anz_fc>1) then do;
+                   T_sq_hc_fc=anz_fc*((hc_fc_mean)`)
+                          *GINV(hc_fc_cov/(anz_fc-1))*hc_fc_mean;
+                   T_sq_gc_fc=anz_fc*((gc_fc_mean)`)
+                          *GINV(gc_fc_cov/(anz_fc-1))*gc_fc_mean;
+                   end;
+            if (anz_mc>1) then do;
+                   T_sq_hc_mc=anz_mc*((hc_mc_mean)`)
+                          *GINV(hc_mc_cov/(anz_mc-1))*hc_mc_mean;
+                   T_sq_gc_mc=anz_mc*((gc_mc_mean)`)
+                          *GINV(gc_mc_cov/(anz_mc-1))*gc_mc_mean;
+                   end;
+            P_hc_trios=1-probchi(T_sq_hc_trios,laenge[1]);
+            P_gc_trios=1-probchi(T_sq_gc_trios,laenge[2]);
+            P_hc_fc=1-probchi(T_sq_hc_fc,laenge[1]);
+            P_gc_fc=1-probchi(T_sq_gc_fc,laenge[2]);
+            P_hc_mc=1-probchi(T_sq_hc_mc,laenge[1]);
+            P_gc_mc=1-probchi(T_sq_gc_mc,laenge[2]);
+            result=(anz_trios||T_sq_hc_trios||laenge[1]||P_hc_trios)
+                   //(anz_trios||T_sq_gc_trios||laenge[2]||P_gc_trios)
+                   //(anz_fc||T_sq_hc_fc||laenge[1]||P_hc_fc)
+                   //(anz_fc||T_sq_gc_fc||laenge[2]||P_gc_fc)
+                   //(anz_mc||T_sq_hc_mc||laenge[1]||P_hc_mc)
+                   //(anz_mc||T_sq_gc_mc||laenge[2]||P_gc_mc);
+            if (anz_trios=0) then perm=0;
+            if (perm=1) then do;
+                   if (fatal_error) then print fatal_error;
+                   anz_sig_h=0; anz_sig_g=0;
+                   quelle=1; x=0;
+                   do i=1 to &simumf;
+                          hc_trios_mean=J(laenge[1],1,0);
+                          gc_trios_mean=J(laenge[2],1,0);
+                          hc_trios_cov=J(laenge[1],laenge[1],0);
+                          gc_trios_cov=J(laenge[2],laenge[2],0);
+                          do fam=1 to anz_trios;
+                                 call ranuni(quelle,x);
+                                 if (x<.5) then hcv=alle_hc[fam,]; else hcv=-alle_hc[fam,];
+                                 hc_trios_mean=hc_trios_mean+hcv`;
+                                 hc_trios_cov=hc_trios_cov+hcv`*hcv;
+                                 call ranuni(quelle,x);
+                                 if (x<.5) then gcv=alle_gc[2*fam-1,]; else gcv=alle_gc[2*fam,];
+                                 gc_trios_mean=gc_trios_mean+gcv`;
+                                 gc_trios_cov=gc_trios_cov+gcv`*gcv;
+                          end;
+                          hc_trios_mean=hc_trios_mean/anz_trios;
+                          hc_trios_cov=hc_trios_cov-anz_trios*hc_trios_mean*hc_trios_mean`;
+                          PT_sq_hc_trios=0;
+                          PT_sq_hc_trios=anz_trios*((hc_trios_mean)`)
+                                 *GINV(hc_trios_cov/(anz_trios-1))*hc_trios_mean;
+                          if (PT_sq_hc_trios>=T_sq_hc_trios) then anz_sig_h=anz_sig_h+1;
+                          gc_trios_mean=gc_trios_mean/anz_trios;
+                          gc_trios_cov=gc_trios_cov-anz_trios*gc_trios_mean*gc_trios_mean`;
+                          PT_sq_gc_trios=0;
+                          PT_sq_gc_trios=anz_trios*((gc_trios_mean)`)
+                                 *GINV(gc_trios_cov/(anz_trios-1))*gc_trios_mean;
+                          if (PT_sq_gc_trios>=T_sq_gc_trios) then anz_sig_g=anz_sig_g+1;
+                   end; /* simumf */
+                   anz_sig_h=anz_sig_h/&simumf.;
+                   anz_sig_g=anz_sig_g/&simumf.;
+                   simumf=&simumf.;
+                   all_snp=1;
+                   result=result//(simumf||all_snp||anz_sig_h||anz_sig_g);
+               end;
+          CREATE res_file FROM result;
+          APPEND FROM result;
+          run;
+          quit;
+          run;
+data a; set res_file;
+file "&outfile." mod;
+if (_N_=1) then do;
+               put;
+               put "Marker: &ma_names.";
+               put;
+               put "               no of ";
+               put "control families coding statistic df p-value";
+               put "father and mother" col1 9.0 " haplotype " col2 9.2 col3 5.0
+                   col4 E9.2;
+            end;
+if (_N_=2) then
+               put " genotype " col2 9.2 col3 5.0
+                   col4 E9.2;
+if (_N_=3) then
+               put "father " col1 9.0 " haplotype " col2 9.2 col3 5.0
+                   col4 E9.2;
+if (_N_=4) then
+               put " genotype " col2 9.2 col3 5.0
+                   col4 E9.2;
+if (_N_=5) then
+               put "mother " col1 9.0 " haplotype " col2 9.2 col3 5.0
+                   col4 E9.2;
+if (_N_=6) then
+               put " genotype " col2 9.2 col3 5.0
+                   col4 E9.2;
+if (_N_=7) then do;
+               put;
+               put "Permutation based (" col1 "replicates) p-values for father and mother:";
+               put "haplotype coding: " col3 E9.2 @;
+               if (col2=1) then put " genotype coding: " col4 E9.2 @; else put;
+    end;
+run;
+data a; set res_file end=schluss;
+array pwert[4];
+retain pwert;
+retain familien;
+retain replikationen;
+length marker $200;
+if (_N_=1) then do;
+               familien=col1; pwert[1]=col4;
+    end;
+if (_N_=2) then pwert[3]=col4;
+if (_N_=7) then do;
+          replikationen=col1;
+          pwert[2]=col3;
+          pwert[4]=col4;
+    end;
+if (schluss=1) then do;
+    marker="&ma_names.";
+    keep pwert1--pwert4 familien replikationen marker;
+    output;
+ end;
+run;
+proc append base=result_hotel data=a;
+run;
+%mend;
