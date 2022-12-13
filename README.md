@@ -1,4 +1,9 @@
 # Functional regression based test for common and rare variants
+
+Maintainer: Bingsong Zhang
+Organizer: Bingsong Zhang
+Contact: zhangbingsong@gdmu.edu.cn
+
 User friendly software that apply functional regression test to genetic data
 
 This is the functional regression based test (FRT) repo for genetic variant association test. Rather than seeing a variant as random variable, FRT see them as a stochastic process. Therefore, the genetic effect is a continuous function that changing with the relative position of a variant on a sequence. 
